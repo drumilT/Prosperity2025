@@ -58,8 +58,8 @@ class Trader:
         orders: List[Order] = []
 
         features = self.get_nn_inputs(state)
-        if features == None:
-          pass
+        if features is None:
+          return []
         score = self.neural_network(features)
         print(f"NN score for SQUID_INK: {score:.4f}")
 
