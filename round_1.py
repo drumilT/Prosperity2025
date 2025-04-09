@@ -60,10 +60,11 @@ class Trader:
         features = self.get_nn_inputs(state)
         if features is None:
           return []
-        score = np.dot(self.neural_network(features), np.array([-1,0,1]))
-        print(f"NN score for SQUID_INK: {score:.4f}")
+        logits = self.neural_network(features)
+        score = np.argmax(logits)-1
+        print("NN score for SQUID_INK:", logits)
 
-        if score == 1:
+        if int(score) == 1:
             for ask_price, ask_volume in sorted(order_depth.sell_orders.items()):
                 volume = -ask_volume
                 to_buy = min(volume, self.POSITION_LIMIT - current_position)
@@ -71,7 +72,7 @@ class Trader:
                     orders.append(Order("SQUID_INK", ask_price, to_buy))
                     current_position += to_buy
 
-        elif score == -1:
+        elif int(score) == -1:
             for bid_price, bid_volume in sorted(order_depth.buy_orders.items(), reverse=True):
                 to_sell = min(bid_volume, self.POSITION_LIMIT + current_position)
                 if to_sell > 0:
@@ -151,7 +152,7 @@ class Trader:
     
     def neural_network(self, x):
         # Convert input to numpy array
-
+        print("input" ,x)
         # Layer 1 (Linear + ReLU)
         W1 = np.array([[-5.5969e-02, -2.0235e-02,  4.9472e-02, -5.5413e-02,  1.3491e-01,
                        -8.0153e-01, -2.1091e+00],
@@ -224,7 +225,6 @@ class Trader:
 
         z1 = np.dot(W1, x) + b1
         a1 = np.maximum(0, z1)  # ReLU
-
         # Layer 2 (Linear + Sigmoid)
         W2 = np.array([[ 0.1175, -1.5759, -0.3367,  2.2504, -0.1932, -1.7152, -1.8849,  1.3653,
                        -0.4069, -0.7402, -0.8390, -0.2143, -0.3804,  0.0929, -0.2527,  1.9264,
@@ -241,6 +241,9 @@ class Trader:
         b2 = np.array([-0.6049,  0.6190, -0.5414])
 
         z2 = np.dot(W2, a1) + b2
-        return np.exp(z2) / sum(np.exp(z2))
+        
+        softmax = np.exp(z2) / sum(np.exp(z2))
+        return softmax
+        return np.argmax(softmax)
 
             
