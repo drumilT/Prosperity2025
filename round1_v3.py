@@ -23,7 +23,7 @@ PARAMS = {
         "soft_position_limit": 45,
     },
     Product.KELP: {
-        "take_width": 1,
+        "take_width": 2,
         "clear_width": 0,
         "prevent_adverse": True,
         "adverse_volume": 15,
@@ -33,14 +33,15 @@ PARAMS = {
         "default_edge": 1,
     },
     Product.SQUID_INK: {
-        "take_width": 2,
+        "take_width": 1,
         "clear_width": 0,
         "prevent_adverse": True,
         "adverse_volume": 15,
         "reversion_beta": -0.15,
-        "disregard_edge": 1,
-        "join_edge": 0,
+        "disregard_edge": 2,
+        "join_edge": 1,
         "default_edge": 2,
+        "soft_position_limit": 20,
     },
 }
 
@@ -51,7 +52,7 @@ class Trader:
             params = PARAMS
         self.params = params
 
-        self.LIMIT = {Product.RAINFOREST_RESIN: 50, Product.KELP: 50, Product.SQUID_INK: 20}
+        self.LIMIT = {Product.RAINFOREST_RESIN: 50, Product.KELP: 50, Product.SQUID_INK: 50}
         self.window_size = 10
         self.ink_history  = deque(maxlen=self.window_size)
         self.spike_duration = deque(maxlen=3)
@@ -60,7 +61,11 @@ class Trader:
         if len(self.ink_history) < 5: 
             return False
         mean = np.mean(list(self.ink_history)[-5:])
-        return abs(current_price - mean) > 3 * np.std(list(self.ink_history))
+        flag =  abs(current_price - mean) > 3 * np.std(list(self.ink_history))
+        if flag:
+            print("Spike detected!", self.spike_duration)
+        return flag
+            
 
     def take_best_orders(
         self,
@@ -270,14 +275,14 @@ class Trader:
         position: int,
         prevent_adverse: bool = False,
         adverse_volume: int = 0,
+        spike = False,
     ) -> (List[Order], int, int):
         orders: List[Order] = []
         buy_order_volume = 0
         sell_order_volume = 0
         
-        if product == Product.SQUID_INK:
-            if self.detect_spike(fair_value):
-                take_width *= 3
+        if spike and product == Product.SQUID_INK:
+            take_width *= 3
 
         buy_order_volume, sell_order_volume = self.take_best_orders(
             product,
@@ -519,9 +524,11 @@ class Trader:
                 self.params[Product.SQUID_INK]["disregard_edge"],
                 self.params[Product.SQUID_INK]["join_edge"],
                 self.params[Product.SQUID_INK]["default_edge"],
+                True,
+                self.params[Product.SQUID_INK]["soft_position_limit"],
             )
             result[Product.SQUID_INK] = (
-                SQUID_INK_make_orders
+                SQUID_INK_make_orders + SQUID_INK_take_orders + SQUID_INK_clear_orders
             )
         conversions = 1
         traderData = jsonpickle.encode(traderObject)
