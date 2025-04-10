@@ -8,7 +8,7 @@ class Trader:
     POSITION_LIMIT = 50
 
     def __init__(self):
-        self.window_size = 5
+        self.window_size = 6
         self.ink_history  = deque(maxlen=self.window_size)
         self.kelp_history = deque(maxlen=self.window_size)
 
@@ -62,7 +62,7 @@ class Trader:
           return []
         logits = self.neural_network(features)
         score = np.argmax(logits)-1
-        print("NN score for SQUID_INK:", logits)
+        print("NN score for SQUID_INK:", score)
 
         if int(score) == 1:
             for ask_price, ask_volume in sorted(order_depth.sell_orders.items()):
@@ -118,25 +118,27 @@ class Trader:
         kelp_mid = kelp_arr[:, 0]
 
         # returns (pad front with zero)
-        ink_ret  = np.concatenate(([0], np.diff(ink_mid)  / (ink_mid[:-1]  + 1e-6)))
-        kelp_ret = np.concatenate(([0], np.diff(kelp_mid) / (kelp_mid[:-1] + 1e-6)))
+        ink_ret  =  np.diff(ink_mid)  / (ink_mid[:-1]  + 1e-6)
+        kelp_ret =  np.diff(kelp_mid) / (kelp_mid[:-1] + 1e-6)
 
         # skews
         ink_skew  = ink_arr[:, 1:4].sum(1) / (ink_arr[:, 4:7].sum(1) + 1e-6) - 1
         kelp_skew = kelp_arr[:, 1:4].sum(1) / (kelp_arr[:, 4:7].sum(1) + 1e-6) - 1
 
         # rolling momentum (simple convolution) & reversion
-        kernel = np.ones(self.window_size)/self.window_size
+        kernel = np.ones(self.window_size-1)/(self.window_size-1)
         kelp_mom = np.convolve(kelp_ret, kernel, mode='valid')
-        kelp_mom = np.concatenate((np.zeros(self.window_size-1), kelp_mom))
+        kelp_mom = np.concatenate((np.zeros(self.window_size-2), kelp_mom))
         kelp_rev = kelp_ret - kelp_mom
 
         ink_mom = np.convolve(ink_ret, kernel, mode='valid')
-        ink_mom = np.concatenate((np.zeros(self.window_size-1), ink_mom))
+        ink_mom = np.concatenate((np.zeros(self.window_size-2), ink_mom))
         ink_rev = ink_ret - ink_mom
-
+ 
         # build final 7×1 feature vector from last row
         last = -1
+        #print("kelp_ret" , kelp_ret)
+        #print("ink_ret" , ink_ret)
         features = np.array([
             kelp_ret[last],
             ink_skew[last],
@@ -242,8 +244,6 @@ class Trader:
 
         z2 = np.dot(W2, a1) + b2
         
-        softmax = np.exp(z2) / sum(np.exp(z2))
         return softmax
-        return np.argmax(softmax)
 
             
