@@ -20,14 +20,14 @@ PARAMS = {
         "disregard_edge": 1,  # disregards orders for joining or pennying within this value from fair
         "join_edge": 2,  # joins orders within this edge
         "default_edge": 4,
-        "soft_position_limit": 25,
+        "soft_position_limit": 45,
     },
     Product.KELP: {
         "take_width": 1,
         "clear_width": 0,
         "prevent_adverse": True,
         "adverse_volume": 15,
-        "reversion_beta": -0.229,
+        "reversion_beta": -0.15,
         "disregard_edge": 1,
         "join_edge": 0,
         "default_edge": 1,
@@ -37,10 +37,10 @@ PARAMS = {
         "clear_width": 0,
         "prevent_adverse": True,
         "adverse_volume": 15,
-        "reversion_beta": -0.145,
+        "reversion_beta": -0.15,
         "disregard_edge": 1,
         "join_edge": 0,
-        "default_edge": 1,
+        "default_edge": 2,
     },
 }
 
@@ -51,7 +51,7 @@ class Trader:
             params = PARAMS
         self.params = params
 
-        self.LIMIT = {Product.RAINFOREST_RESIN: 50, Product.KELP: 50, Product.SQUID_INK: 50}
+        self.LIMIT = {Product.RAINFOREST_RESIN: 50, Product.KELP: 50, Product.SQUID_INK: 20}
 
     def take_best_orders(
         self,
