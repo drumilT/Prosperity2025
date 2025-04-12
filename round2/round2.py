@@ -1,4 +1,4 @@
-from datamodel import OrderDepth, UserId, TradingState, Order
+from datamodel import OrderDepth, UserId, TradingState, Order, Logger
 from typing import List, Dict, Any
 import string
 import jsonpickle
@@ -12,7 +12,7 @@ class Product:
     SQUID_INK = "SQUID_INK"
     CROISSANTS = "CROISSANTS"
     JAMS = "JAMS"
-    DJEMBE = "DJEMBE"
+    DJEMBES = "DJEMBES"
     PICNIC_BASKET1 = "PICNIC_BASKET1"
     PICNIC_BASKET2 = "PICNIC_BASKET2"
     SPREAD1 = "SPREAD1"
@@ -70,7 +70,7 @@ PARAMS = {
 BASKET_WEIGHTS_1 = {
     Product.CROISSANTS: 6,
     Product.JAMS: 3,
-    Product.DJEMBE: 1,
+    Product.DJEMBES: 1,
 }
 BASKET_WEIGHTS_2 = {
     Product.CROISSANTS: 4,
@@ -86,10 +86,10 @@ class Trader:
         self.LIMIT = {
             Product.RAINFOREST_RESIN: 50,
             Product.KELP: 50,
-            Product.SQUID_INK: 50,
+            Product.SQUID_INK: 20,
             Product.CROISSANTS: 250,
             Product.JAMS: 350,
-            Product.DJEMBE: 60,
+            Product.DJEMBES: 60,
             Product.PICNIC_BASKET1: 60,
             Product.PICNIC_BASKET2: 100,
             Product.SYNTHETIC1: 60,
@@ -428,15 +428,16 @@ class Trader:
     def get_synthetic_basket_order_depth(
         self, order_depths: Dict[str, OrderDepth]
     ) -> Dict[str, OrderDepth]:
-        # Constants
+        
         synthetic_order_price = {
             Product.SYNTHETIC1: OrderDepth(),
             Product.SYNTHETIC2: OrderDepth(),
         }
+        
         for product,basket in [( Product.SYNTHETIC1,BASKET_WEIGHTS_1), (Product.SYNTHETIC2, BASKET_WEIGHTS_2)]:
             CROISSANTS_PER_BASKET = basket[Product.CROISSANTS]
             JAMS_PER_BASKET = basket[Product.JAMS]
-            DJEMBE_PER_BASKET = basket.get(Product.DJEMBE, 0)
+            DJEMBES_PER_BASKET = basket.get(Product.DJEMBES, 0)
 
             # Calculate the best bid and ask for each component
             CROISSANTS_best_bid = (
@@ -459,14 +460,14 @@ class Trader:
                 if order_depths[Product.JAMS].sell_orders
                 else float("inf")
             )
-            DJEMBE_best_bid = (
-                max(order_depths[Product.DJEMBE].buy_orders.keys())
-                if order_depths[Product.DJEMBE].buy_orders
+            DJEMBES_best_bid = (
+                max(order_depths[Product.DJEMBES].buy_orders.keys())
+                if order_depths[Product.DJEMBES].buy_orders
                 else 0
             )
-            DJEMBE_best_ask = (
-                min(order_depths[Product.DJEMBE].sell_orders.keys())
-                if order_depths[Product.DJEMBE].sell_orders
+            DJEMBES_best_ask = (
+                min(order_depths[Product.DJEMBES].sell_orders.keys())
+                if order_depths[Product.DJEMBES].sell_orders
                 else float("inf")
             )
 
@@ -474,12 +475,12 @@ class Trader:
             implied_bid = (
                 CROISSANTS_best_bid * CROISSANTS_PER_BASKET
                 + JAMS_best_bid * JAMS_PER_BASKET
-                + DJEMBE_best_bid * DJEMBE_PER_BASKET
+                + DJEMBES_best_bid * DJEMBES_PER_BASKET
             )
             implied_ask = (
                 CROISSANTS_best_ask * CROISSANTS_PER_BASKET
                 + JAMS_best_ask * JAMS_PER_BASKET
-                + DJEMBE_best_ask * DJEMBE_PER_BASKET
+                + DJEMBES_best_ask * DJEMBES_PER_BASKET
             )
 
             # Calculate the maximum number of synthetic baskets available at the implied bid and ask
@@ -492,15 +493,15 @@ class Trader:
                     order_depths[Product.JAMS].buy_orders[JAMS_best_bid]
                     // JAMS_PER_BASKET
                 )
-                if DJEMBE_PER_BASKET > 0:
-                    DJEMBE_bid_volume = (
-                        order_depths[Product.DJEMBE].buy_orders[DJEMBE_best_bid]
-                        // DJEMBE_PER_BASKET
+                if DJEMBES_PER_BASKET > 0:
+                    DJEMBES_bid_volume = (
+                        order_depths[Product.DJEMBES].buy_orders[DJEMBES_best_bid]
+                        // DJEMBES_PER_BASKET
                     )
                 else:
-                    DJEMBE_bid_volume = float("inf")
+                    DJEMBES_bid_volume = float("inf")
                 implied_bid_volume = min(
-                    CROISSANTS_bid_volume, JAMS_bid_volume, DJEMBE_bid_volume
+                    CROISSANTS_bid_volume, JAMS_bid_volume, DJEMBES_bid_volume
                 )
                 synthetic_order_price[product].buy_orders[implied_bid] = implied_bid_volume
 
@@ -513,15 +514,15 @@ class Trader:
                     -order_depths[Product.JAMS].sell_orders[JAMS_best_ask]
                     // JAMS_PER_BASKET
                 )
-                if DJEMBE_PER_BASKET > 0:
-                    DJEMBE_ask_volume = (
-                        -order_depths[Product.DJEMBE].sell_orders[DJEMBE_best_ask]
-                        // DJEMBE_PER_BASKET
+                if DJEMBES_PER_BASKET > 0:
+                    DJEMBES_ask_volume = (
+                        -order_depths[Product.DJEMBES].sell_orders[DJEMBES_best_ask]
+                        // DJEMBES_PER_BASKET
                     )
                 else:   
-                    DJEMBE_ask_volume = float("inf")
+                    DJEMBES_ask_volume = float("inf")
                 implied_ask_volume = min(
-                    CROISSANTS_ask_volume, JAMS_ask_volume, DJEMBE_ask_volume
+                    CROISSANTS_ask_volume, JAMS_ask_volume, DJEMBES_ask_volume
                 )
                 synthetic_order_price[product].sell_orders[implied_ask] = -implied_ask_volume
 
@@ -535,25 +536,26 @@ class Trader:
         basket_analysis = []
         
         # Analyze both basket pairs
+        synthetic_depth = self.get_synthetic_basket_order_depth(order_depths)
         for basket_product, synthetic_product in [
             (Product.PICNIC_BASKET1, Product.SYNTHETIC1),
             (Product.PICNIC_BASKET2, Product.SYNTHETIC2)
         ]:
             # Get order depths for both instruments
             basket_depth = order_depths.get(basket_product)
-            synthetic_depth = self.get_synthetic_basket_order_depth(order_depths).get(synthetic_product)
+            synthetic_depth_prod = synthetic_depth.get(synthetic_product)
             
-            if not basket_depth or not synthetic_depth:
+            if not basket_depth or not synthetic_depth_prod:
                 continue
                 
             # Calculate mid prices
             basket_mid = (min(basket_depth.sell_orders) + max(basket_depth.buy_orders)) / 2
-            synthetic_mid = (min(synthetic_depth.sell_orders) + max(synthetic_depth.buy_orders)) / 2
+            synthetic_mid = (min(synthetic_depth_prod.sell_orders) + max(synthetic_depth_prod.buy_orders)) / 2
             spread = basket_mid - synthetic_mid
             
             # Calculate position capacity
             position = current_positions.get(basket_product, 0)
-            max_position = self.params[basket_product]["position_limit"]
+            max_position = self.LIMIT[basket_product]
             remaining_capacity = max_position - abs(position)
             
             # Calculate potential profit
@@ -562,6 +564,7 @@ class Trader:
             basket_analysis.append({
                 'basket': basket_product,
                 'synthetic': synthetic_product,
+                'spread_product': Product.SPREAD1 if basket_product == Product.PICNIC_BASKET1 else Product.SPREAD2,
                 'spread': spread,
                 'profit_potential': profit_potential,
                 'position': position
@@ -575,7 +578,7 @@ class Trader:
         best_opportunity = sorted_baskets[0]
         
         # Determine trade direction
-        target_position = self.params[best_opportunity['basket']]["target_position"]
+        target_position = self.params[best_opportunity['spread_product']]["target_position"]
         if best_opportunity['spread'] > 0:
             # Sell basket, buy synthetic
             basket_side = 'SELL'
@@ -599,13 +602,13 @@ class Trader:
             best_basket_price = max(order_depths[best_opportunity['basket']].buy_orders.keys())
             basket_orders.append(Order(best_opportunity['basket'], best_basket_price, quantity))
             
-            best_synthetic_price = min(order_depths[best_opportunity['synthetic']].sell_orders.keys())
+            best_synthetic_price = min(synthetic_depth[best_opportunity['synthetic']].sell_orders.keys())
             synthetic_orders.append(Order(best_opportunity['synthetic'], best_synthetic_price, -quantity))
         else:
             best_basket_price = min(order_depths[best_opportunity['basket']].sell_orders.keys())
             basket_orders.append(Order(best_opportunity['basket'], best_basket_price, -quantity))
             
-            best_synthetic_price = max(order_depths[best_opportunity['synthetic']].buy_orders.keys())
+            best_synthetic_price = max(synthetic_depth[best_opportunity['synthetic']].buy_orders.keys())
             synthetic_orders.append(Order(best_opportunity['synthetic'], best_synthetic_price, quantity))
         
         # Convert synthetic orders to component orders
@@ -627,7 +630,7 @@ class Trader:
         order_depths: Dict[str, OrderDepth],
         synthetic_type: Product
     ) -> Dict[str, List[Order]]:
-        component_orders = {prod: [] for prod in [Product.CROISSANTS, Product.JAMS, Product.DJEMBE]}
+        component_orders = {prod: [] for prod in [Product.CROISSANTS, Product.JAMS, Product.DJEMBES]}
         
         # Select appropriate weights
         weights = BASKET_WEIGHTS_1 if synthetic_type == Product.SYNTHETIC1 else BASKET_WEIGHTS_2
@@ -636,17 +639,17 @@ class Trader:
             # Calculate component quantities
             croissant_qty = order.quantity * weights[Product.CROISSANTS]
             jams_qty = order.quantity * weights[Product.JAMS]
-            djembe_qty = order.quantity * weights.get(Product.DJEMBE, 0)
+            DJEMBES_qty = order.quantity * weights.get(Product.DJEMBES, 0)
             
             # Get best available prices
             if order.quantity > 0:  # Buying synthetic = selling components
                 croissant_price = max(order_depths[Product.CROISSANTS].buy_orders.keys())
                 jams_price = max(order_depths[Product.JAMS].buy_orders.keys())
-                djembe_price = max(order_depths[Product.DJEMBE].buy_orders.keys()) if Product.DJEMBE in weights else 0
+                DJEMBES_price = max(order_depths[Product.DJEMBES].buy_orders.keys()) if Product.DJEMBES in weights else 0
             else:  # Selling synthetic = buying components
                 croissant_price = min(order_depths[Product.CROISSANTS].sell_orders.keys())
                 jams_price = min(order_depths[Product.JAMS].sell_orders.keys())
-                djembe_price = min(order_depths[Product.DJEMBE].sell_orders.keys()) if Product.DJEMBE in weights else 0
+                DJEMBES_price = min(order_depths[Product.DJEMBES].sell_orders.keys()) if Product.DJEMBES in weights else 0
             
             # Create component orders
             component_orders[Product.CROISSANTS].append(Order(
@@ -655,9 +658,9 @@ class Trader:
             component_orders[Product.JAMS].append(Order(
                 Product.JAMS, jams_price, -jams_qty if order.quantity > 0 else jams_qty
             ))
-            if djembe_qty != 0:
-                component_orders[Product.DJEMBE].append(Order(
-                    Product.DJEMBE, djembe_price, -djembe_qty if order.quantity > 0 else djembe_qty
+            if DJEMBES_qty != 0:
+                component_orders[Product.DJEMBES].append(Order(
+                    Product.DJEMBES, DJEMBES_price, -DJEMBES_qty if order.quantity > 0 else DJEMBES_qty
                 ))
         
         return component_orders
@@ -911,5 +914,7 @@ class Trader:
                 result[product] = spread_orders[product]
 
         traderData = jsonpickle.encode(traderObject)
-
+        logger.flush(state, result, conversions, traderData)
         return result, conversions, traderData
+    
+logger = Logger()
