@@ -1,4 +1,4 @@
-from datamodel import OrderDepth, UserId, TradingState, Order, Logger
+from datamodel import OrderDepth, UserId, TradingState, Order
 from typing import List, Dict, Any
 import string
 import jsonpickle
@@ -42,29 +42,29 @@ PARAMS = {
         "default_edge": 1,
     },
     Product.SQUID_INK: {
-        "take_width": 1,
+        "take_width": 2,
         "clear_width": 0,
         "prevent_adverse": True,
         "adverse_volume": 15,
         "reversion_beta": -0.15,
-        "disregard_edge": 2,
-        "join_edge": 1,
+        "disregard_edge": 1,
+        "join_edge": 3,
         "default_edge": 2,
-        "soft_position_limit": 20,
+        "soft_position_limit": 30,
     },
     Product.SPREAD1: {
-        "default_spread_mean": 379.50439988484239,
-        "default_spread_std": 76.07966,
+        "default_spread_mean": 10,
+        "default_spread_std": 85,
         "spread_std_window": 45,
         "zscore_threshold": 7,
-        "target_position": 58,
+        "target_position": 60,
     },
     Product.SPREAD2: {
-        "default_spread_mean": 379.50439988484239,
+        "default_spread_mean": 10,
         "default_spread_std": 76.07966,
         "spread_std_window": 45,
         "zscore_threshold": 7,
-        "target_position": 58,
+        "target_position": 70,
     },
 }
 BASKET_WEIGHTS_1 = {
@@ -86,7 +86,7 @@ class Trader:
         self.LIMIT = {
             Product.RAINFOREST_RESIN: 50,
             Product.KELP: 50,
-            Product.SQUID_INK: 20,
+            Product.SQUID_INK: 50,
             Product.CROISSANTS: 250,
             Product.JAMS: 350,
             Product.DJEMBES: 60,
@@ -576,7 +576,9 @@ class Trader:
         # Sort by maximum profit potential
         sorted_baskets = sorted(basket_analysis, key=lambda x: x['profit_potential'], reverse=True)
         best_opportunity = sorted_baskets[0]
-        
+        print("bestop",best_opportunity)
+        if abs(best_opportunity['spread']) < self.params[best_opportunity['spread_product']]["default_spread_mean"]:
+            return None
         # Determine trade direction
         target_position = self.params[best_opportunity['spread_product']]["target_position"]
         if best_opportunity['spread'] > 0:
@@ -914,7 +916,6 @@ class Trader:
                 result[product] = spread_orders[product]
 
         traderData = jsonpickle.encode(traderObject)
-        logger.flush(state, result, conversions, traderData)
+        #logger.flush(state, result, conversions, traderData)
         return result, conversions, traderData
     
-logger = Logger()

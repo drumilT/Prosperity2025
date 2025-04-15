@@ -56,21 +56,21 @@ PARAMS = {
         "soft_position_limit": 30,
     },
     Product.SPREAD1: {
-        "default_spread_mean": 20,
+        "default_spread_mean": 39,
         "default_spread_std": 85,
         "spread_std_window": 45,
         "zscore_threshold": 7,
         "target_position": 60,
     },
     Product.SPREAD2: {
-        "default_spread_mean": 10,
+        "default_spread_mean": 32,
         "default_spread_std": 76.07966,
         "spread_std_window": 45,
         "zscore_threshold": 7,
         "target_position": 75,
     },
     Product.SPREAD3: {
-        "default_spread_mean": 10,
+        "default_spread_mean": 40,
         "default_spread_std": 76.07966,
         "spread_std_window": 45,
         "zscore_threshold": 7,
@@ -582,7 +582,7 @@ class Trader:
             return (best_ask + best_bid) / 2
         return None
     
-    def execute_spread_orders(
+    def execute_spread_orders_old(
         self,
         order_depths: Dict[str, OrderDepth],
         current_positions: Dict[Product, int]
@@ -683,6 +683,112 @@ class Trader:
             best_opportunity['basket']: basket_orders,
             **component_orders
         }
+
+    def execute_spread_orders(
+        self,
+        order_depths: Dict[str, OrderDepth],
+        current_positions: Dict[Product, int]
+    ) -> Dict[str, List[Order]]:
+        basket_analysis = []
+
+        # Analyze both basket pairs
+        synthetic_depth = self.get_synthetic_basket_order_depth(order_depths)
+
+        for basket_product, synthetic_product, spread_product in [
+            (Product.PICNIC_BASKET1, Product.SYNTHETIC1, Product.SPREAD1),
+            (Product.PICNIC_BASKET2, Product.SYNTHETIC2, Product.SPREAD2),
+            (Product.PICNIC_BASKET1, Product.SYNTHETIC3, Product.SPREAD3),
+        ]:
+            # Get order depths for both instruments
+            basket_depth = order_depths.get(basket_product)
+            synthetic_depth_prod = synthetic_depth.get(synthetic_product)
+
+            if not basket_depth or not synthetic_depth_prod:
+                continue
+
+            # Calculate mid prices
+            basket_mid = (min(basket_depth.sell_orders) + max(basket_depth.buy_orders)) / 2
+            synthetic_mid = (min(synthetic_depth_prod.sell_orders) + max(synthetic_depth_prod.buy_orders)) / 2
+            spread = basket_mid - synthetic_mid
+
+            # Calculate position capacity
+            position = current_positions.get(basket_product, 0)
+            max_position = self.LIMIT[basket_product]
+            remaining_capacity = max_position - abs(position)
+
+            # Calculate potential profit
+            profit_potential = abs(spread) * remaining_capacity
+
+            basket_analysis.append({
+                'basket': basket_product,
+                'synthetic': synthetic_product,
+                'spread_product': spread_product,
+                'spread': spread,
+                'profit_potential': profit_potential,
+                'position': position
+            })
+
+        if not basket_analysis:
+            return {}
+
+        orders_to_execute = {}
+
+        for opportunity in basket_analysis:
+            spread_threshold = self.params[opportunity['spread_product']]["default_spread_mean"]
+            
+            if abs(opportunity['spread']) < spread_threshold:
+                continue
+
+            # Determine trade direction
+            target_position = self.params[opportunity['spread_product']]["target_position"]
+
+            if opportunity['spread'] > 0:
+                # Sell basket, buy synthetic
+                basket_side = 'SELL'
+                synthetic_side = 'BUY'
+                target_position = -target_position
+            else:
+                # Buy basket, sell synthetic
+                basket_side = 'BUY'
+                synthetic_side = 'SELL'
+                target_position = abs(target_position)
+
+            # Calculate executable quantity
+            current_basket_pos = opportunity['position']
+            quantity = abs(target_position - current_basket_pos)
+
+            # Get best available prices
+            basket_orders = []
+            synthetic_orders = []
+
+            if basket_side == 'BUY':
+                best_basket_price = max(order_depths[opportunity['basket']].buy_orders.keys())
+                basket_orders.append(Order(opportunity['basket'], best_basket_price, quantity))
+
+                best_synthetic_price = min(synthetic_depth[opportunity['synthetic']].sell_orders.keys())
+                synthetic_orders.append(Order(opportunity['synthetic'], best_synthetic_price, -quantity))
+            else:
+                best_basket_price = min(order_depths[opportunity['basket']].sell_orders.keys())
+                basket_orders.append(Order(opportunity['basket'], best_basket_price, -quantity))
+
+                best_synthetic_price = max(synthetic_depth[opportunity['synthetic']].buy_orders.keys())
+                synthetic_orders.append(Order(opportunity['synthetic'], best_synthetic_price, quantity))
+
+            # Convert synthetic orders to component orders
+            component_orders = self.convert_synthetic_basket_orders(
+                synthetic_orders,
+                order_depths,
+                opportunity['synthetic']
+            )
+
+            # Aggregate all orders for this spread
+            orders_to_execute[opportunity['basket']] = basket_orders
+            for product in component_orders:
+                if product not in orders_to_execute:
+                    orders_to_execute[product] = []
+                orders_to_execute[product].extend(component_orders[product])
+
+        return orders_to_execute
 
     def convert_synthetic_basket_orders(
         self, 
