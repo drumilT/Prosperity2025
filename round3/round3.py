@@ -7,9 +7,8 @@ import math
 from collections import deque
 from math import log, sqrt, exp, isclose
 from statistics import NormalDist
-from scipy.optimize import newton
 
-TIME_TO_EXPIRY = 245/252 ##CHANGE BEFORE SUBMISSION
+TIME_TO_EXPIRY = 248/252 ##CHANGE BEFORE SUBMISSION
 
 class Product:
     RAINFOREST_RESIN = "RAINFOREST_RESIN"
@@ -83,10 +82,10 @@ PARAMS = {
         "delta": 0.5,
         "gamma": 0.1,
         "target_position": 0,
-        "join_edge": 0.5,
+        "join_edge": 0,
         "disregard_edge": 0,
-        "default_edge": 0.5,
-        "take_width": 1,
+        "default_edge": 0,
+        "take_width": 0.5,
         "strike": 9500
     },
     Product.VOLCANIC_ROCK_VOUCHER_9750: {
@@ -94,9 +93,9 @@ PARAMS = {
         "delta": 0.5,
         "gamma": 0.1,
         "target_position": 0,
-        "join_edge": 0.5,
+        "join_edge": 0,
         "disregard_edge": 0,
-        "default_edge": 0.5,
+        "default_edge": 0,
         "take_width": 1,
         "strike": 9750
     },
@@ -108,7 +107,7 @@ PARAMS = {
         "join_edge": 0.5,
         "disregard_edge": 0.5,
         "default_edge": 0.5,
-        "take_width": 1,
+        "take_width": 0.5,
         "strike": 10000
     },
     Product.VOLCANIC_ROCK_VOUCHER_10250: {
@@ -123,7 +122,7 @@ PARAMS = {
         "strike": 10250
     },
     Product.VOLCANIC_ROCK_VOUCHER_10500: {
-        "ivolatility": 0.16,
+        "ivolatility": 0.2,
         "delta": 0.5,
         "gamma": 0.1,
         "target_position": 0,
@@ -146,11 +145,11 @@ BASKET_WEIGHTS_2 = {
     Product.JAMS: 2,
 }
 VOLCANIC_VOUCHERS = [
-    Product.VOLCANIC_ROCK_VOUCHER_9500,
-    Product.VOLCANIC_ROCK_VOUCHER_9750,
+    #Product.VOLCANIC_ROCK_VOUCHER_9500,
+    #Product.VOLCANIC_ROCK_VOUCHER_9750,
     Product.VOLCANIC_ROCK_VOUCHER_10000,
     Product.VOLCANIC_ROCK_VOUCHER_10250,
-    Product.VOLCANIC_ROCK_VOUCHER_10500
+    #Product.VOLCANIC_ROCK_VOUCHER_10500
 ]
 
 class BlackScholesGreeks:
@@ -203,7 +202,7 @@ class BlackScholesGreeks:
         return spot * shared['div_discount'] * sqrt(T) * shared['pdf_d1']
 
     @staticmethod
-    def implied_volatility(market_price, spot, strike, T, r=0.0, q=0.0):
+    def implied_volatility_newton(market_price, spot, strike, T, r=0.0, q=0.0):
         """Newton-Raphson with analytical vega and value reuse"""
         def f(sigma):
             # Reuse all precomputed values for Greeks
@@ -226,7 +225,25 @@ class BlackScholesGreeks:
         except RuntimeError:
             return float('nan')
 
-
+    def implied_volatility(
+        call_price, spot, strike, time_to_expiry, max_iterations=200, tolerance=1e-10
+    ):
+        low_vol = 0.01
+        high_vol = 1.0
+        volatility = (low_vol + high_vol) / 2.0  # Initial guess as the midpoint
+        for _ in range(max_iterations):
+            estimated_price = BlackScholesGreeks.call_price(
+                spot, strike, time_to_expiry, volatility
+            )
+            diff = estimated_price - call_price
+            if abs(diff) < tolerance:
+                break
+            elif diff > 0:
+                high_vol = volatility
+            else:
+                low_vol = volatility
+            volatility = (low_vol + high_vol) / 2.0
+        return volatility
 
 class Trader:
     def __init__(self, params=None):
@@ -1030,7 +1047,7 @@ class Trader:
         position_difference = target_hedge_position - current_position
         
         # Check if we need to adjust our position
-        if abs(position_difference) < 1:
+        if abs(position_difference) < 10:
             return [] # Already delta neutral
         
         # Check position limits
@@ -1119,7 +1136,7 @@ class Trader:
                 self.params[voucher]["disregard_edge"],
                 self.params[voucher]["join_edge"],
                 self.params[voucher]["default_edge"],
-                True,
+                False,
                 self.params[voucher].get("soft_position_limit", 0),
                 )
         
@@ -1505,7 +1522,7 @@ class Trader:
                 result[Product.VOLCANIC_ROCK] = volcanic_rock_orders
 
         traderData = jsonpickle.encode(traderObject)
-        logger.flush(state, result, conversions, traderData)
+        #logger.flush(state, result, conversions, traderData)
         return result, conversions, traderData
     
 import json
